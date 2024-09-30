@@ -22,20 +22,39 @@ public class FlutterUdidPlugin: NSObject, FlutterPlugin {
     let bundleName = Bundle.main.infoDictionary!["CFBundleName"] as! String
     let accountName = Bundle.main.bundleIdentifier!
 
-    var applicationUUID = SAMKeychain.password(forService: bundleName, account: accountName)
+    var applicationUUID: String?
+
+    do {
+      applicationUUID = try SAMKeychain.password(forService: bundleName, account: accountName)
+    } catch let error as NSError {
+      result(FlutterError.init(code: "UNAVAILABLE",
+                               message: "Failed to retrieve UDID from Keychain",
+                               details: error.localizedDescription))
+      return
+    }
 
     if applicationUUID == nil {
-      applicationUUID = (UIDevice.current.identifierForVendor?.uuidString)!
-      let query = SAMKeychainQuery()
-      query.service = bundleName
-      query.account = accountName
-      query.password = applicationUUID
-      query.synchronizationMode = SAMKeychainQuerySynchronizationMode.no
+      if let uuid = UIDevice.current.identifierForVendor?.uuidString {
+        applicationUUID = uuid
+        let query = SAMKeychainQuery()
+        query.service = bundleName
+        query.account = accountName
+        query.password = applicationUUID
+        query.synchronizationMode = SAMKeychainQuerySynchronizationMode.no
 
-      do {
-        try query.save()
-      } catch let error as NSError {
-        print("SAMKeychainQuery Exception: \(error)")
+        do {
+            try query.save()
+        } catch let error as NSError {
+            result(FlutterError.init(code: "UNAVAILABLE",
+                                     message: "Failed to save UDID in Keychain",
+                                     details: error.localizedDescription))
+            return
+        }
+      } else {
+        result(FlutterError.init(code: "UNAVAILABLE",
+                                 message: "identifierForVendor not available",
+                                 details: nil))
+        return
       }
     }
 
