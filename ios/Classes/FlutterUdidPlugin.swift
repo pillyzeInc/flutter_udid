@@ -19,51 +19,57 @@ public class FlutterUdidPlugin: NSObject, FlutterPlugin {
   }
 
   private func getUniqueDeviceIdentifierAsString(result: FlutterResult) {
-    let bundleName = Bundle.main.infoDictionary!["CFBundleName"] as! String
-    let accountName = Bundle.main.bundleIdentifier!
+      let bundleName = Bundle.main.infoDictionary!["CFBundleName"] as! String
+      let accountName = Bundle.main.bundleIdentifier!
 
-    var applicationUUID: String?
+      var applicationUUID: String?
 
-    do {
-      applicationUUID = try SAMKeychain.password(forService: bundleName, account: accountName)
-    } catch let error as NSError {
-      result(FlutterError.init(code: "UNAVAILABLE",
-                               message: "Failed to retrieve UDID from Keychain",
-                               details: error.localizedDescription))
-      return
-    }
-
-    if applicationUUID == nil {
-      if let uuid = UIDevice.current.identifierForVendor?.uuidString {
-        applicationUUID = uuid
-        let query = SAMKeychainQuery()
-        query.service = bundleName
-        query.account = accountName
-        query.password = applicationUUID
-        query.synchronizationMode = SAMKeychainQuerySynchronizationMode.no
-
-        do {
-            try query.save()
-        } catch let error as NSError {
-            result(FlutterError.init(code: "UNAVAILABLE",
-                                     message: "Failed to save UDID in Keychain",
-                                     details: error.localizedDescription))
-            return
-        }
-      } else {
-        result(FlutterError.init(code: "UNAVAILABLE",
-                                 message: "identifierForVendor not available",
-                                 details: nil))
-        return
+      do {
+          applicationUUID = try SAMKeychain.password(forService: bundleName, account: accountName)
+      } catch let error as NSError {
+          print("SAMKeychain.password 예외 발생: \(error)")
+          applicationUUID = nil
       }
-    }
 
-    if applicationUUID==nil||applicationUUID=="" {
-      result(FlutterError.init(code: "UNAVAILABLE",
-                               message: "UDID not available",
-                               details: nil));
-    } else {
-      result(applicationUUID)
-    }
+      if applicationUUID == nil {
+          if let newUUID = self.hardwareUUID() {
+              applicationUUID = newUUID
+
+              let query = SAMKeychainQuery()
+              query.service = bundleName
+              query.account = accountName
+              query.password = applicationUUID
+              query.synchronizationMode = SAMKeychainQuerySynchronizationMode.no
+
+              do {
+                  try query.save()
+              } catch let error as NSError {
+                  print("SAMKeychainQuery 저장 예외 발생: \(error)")
+              }
+          } else {
+              result(FlutterError.init(code: "UNAVAILABLE",
+                                       message: "UDID not available",
+                                       details: nil))
+              return
+          }
+      }
+
+      if applicationUUID == nil || applicationUUID == "" {
+          result(FlutterError.init(code: "UNAVAILABLE",
+                                   message: "UDID not available",
+                                   details: nil))
+      } else {
+          result(applicationUUID)
+      }
+  }
+
+  private func hardwareUUID() -> String?
+  {
+      let matchingDict = IOServiceMatching("IOPlatformExpertDevice")
+      let platformExpert = IOServiceGetMatchingService(kIOMasterPortDefault, matchingDict)
+      defer{ IOObjectRelease(platformExpert) }
+
+      guard platformExpert != 0 else { return nil }
+      return IORegistryEntryCreateCFProperty(platformExpert, kIOPlatformUUIDKey as CFString, kCFAllocatorDefault, 0).takeRetainedValue() as? String
   }
 }
